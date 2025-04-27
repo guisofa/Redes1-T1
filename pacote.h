@@ -6,7 +6,7 @@
 #include <string.h>
 
 #define MARCADORINI 126 // 01111110
-#define PACOTE_TAM_MAX 130
+#define PACOTE_TAM_MAX 131
 #define DADOS_TAM_MAX 127
 
 typedef unsigned char uchar;

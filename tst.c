@@ -43,7 +43,7 @@ int cria_raw_socket(char* nome_interface_rede) {
 
 int manda_pacote(int soquete, char* msg) {
     pacote* pacote = malloc(sizeof(pacote));
-    pacote->tamanho = (uchar)(strlen(msg)+1);
+    pacote->tamanho = (uchar)(strlen(msg)+1); //msg + \0
     pacote->sequencia = 0;
     pacote->tipo = 0;
     pacote->checksum = 0;
@@ -53,7 +53,7 @@ int manda_pacote(int soquete, char* msg) {
     uchar* buffer = gera_mensagem(pacote);
 
     /* // nao tenho ideia do que isso faz, mas não funciona sem.
-       // update: agora funciona, mas vou deixar aqui so pra ter certeza
+          update: agora funciona, mas vou deixar aqui so pra ter certeza
     struct sockaddr_ll destino = {0};
     destino.sll_family = AF_PACKET;
     destino.sll_protocol = htons(ETH_P_ALL);
