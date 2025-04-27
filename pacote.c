@@ -1,7 +1,11 @@
 #include "pacote.h"
 
 uchar* gera_mensagem(pacote* p) {
-    uchar* msg = malloc((4 + p->tamanho) * sizeof(uchar));
+    int bytes_extra = TAM_MIN - (p->tamanho + 4);
+    if (bytes_extra < 0) bytes_extra = 0;
+
+    uchar* msg = malloc((p->tamanho + 4 + bytes_extra) * sizeof(uchar));
+
     msg[0] = MARCADORINI;
     // 7 bits de tamanho e o mais significativo de sequencia formam um byte
     msg[1] = ((p->tamanho & 0x7F) << 1) | ((p->sequencia & 0x10) >> 4);
@@ -9,6 +13,7 @@ uchar* gera_mensagem(pacote* p) {
     msg[2] = ((p->sequencia & 0x0F) << 4) | (p->tipo & 0x0F);
     msg[3] = p->checksum;
     memcpy(&msg[4], p->dados, p->tamanho);
+    memset(&msg[4 + p->tamanho], 0, bytes_extra);
 
     return msg;
 }

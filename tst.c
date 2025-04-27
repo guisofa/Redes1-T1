@@ -41,16 +41,16 @@ int cria_raw_socket(char* nome_interface_rede) {
     return soquete;
 }
 
-int manda_pacote(int soquete, char* msg) {
-    pacote* pacote = malloc(sizeof(pacote));
-    pacote->tamanho = (uchar)(strlen(msg)+1); //msg + \0
-    pacote->sequencia = 0;
-    pacote->tipo = 0;
-    pacote->checksum = 0;
-    pacote->dados = (uchar*) malloc((pacote->tamanho) * sizeof(uchar));
-    memcpy((char*)pacote->dados, msg, pacote->tamanho);
+int manda_pacote(int soquete, char* msg, int tam) {
+    pacote* pac = malloc(sizeof(pacote));
+    pac->tamanho = tam;
+    pac->sequencia = 0;
+    pac->tipo = 0;
+    pac->checksum = 0;
+    pac->dados = (uchar*) malloc((pac->tamanho) * sizeof(uchar));
+    memcpy((char*)pac->dados, msg, pac->tamanho);
 
-    uchar* buffer = gera_mensagem(pacote);
+    uchar* buffer = gera_mensagem(pac);
 
     /* // nao tenho ideia do que isso faz, mas não funciona sem.
           update: agora funciona, mas vou deixar aqui so pra ter certeza
@@ -59,9 +59,11 @@ int manda_pacote(int soquete, char* msg) {
     destino.sll_protocol = htons(ETH_P_ALL);
     destino.sll_ifindex = if_nametoindex("lo");
     */
-    send(soquete, buffer, pacote->tamanho + 4, 0);
-    free(pacote->dados);
-    free(pacote);
+
+    // se o tamanho da msg for menor que TAM_MIN entao bytes extras foram colocados
+    if (send(soquete, buffer, (pac->tamanho+4 < TAM_MIN) ? TAM_MIN : (pac->tamanho + 4), 0) == -1) return -1;
+    free(pac->dados);
+    free(pac);
     free(buffer);
     return 0;
 }
@@ -72,18 +74,21 @@ void recebe_mensagem(int soquete) {
     while (1) {
         int bytes_recebidos = recv(soquete, buffer, PACOTE_TAM_MAX, 0);
         if (bytes_recebidos < 0) printf("erro recv\n");
-        if (bytes_recebidos > 4/*tamanho minimo da msg*/ && buffer[0] == MARCADORINI) {
-            pacote* pacote = gera_pacote(buffer);
+        if (bytes_recebidos >= 4/*tamanho minimo da msg*/ && buffer[0] == MARCADORINI) {
+            pacote* pac = gera_pacote(buffer);
             printf("recebido:\n");
             printf("marcador:  %#02X\n", MARCADORINI);
-            printf("tamanho:   %d\n", pacote->tamanho);
-            printf("sequencia: %d\n", pacote->sequencia);
-            printf("tipo:      %d\n", pacote->tipo);
+            printf("tamanho:   %d\n", pac->tamanho);
+            printf("sequencia: %d\n", pac->sequencia);
+            printf("tipo:      %d\n", pac->tipo);
             printf("dados: ");
-            for (int i = 0; i < pacote->tamanho; i++) {
-                printf("%c", pacote->dados[i]);
+            for (int i = 0; i < pac->tamanho; i++) {
+                printf("%c", pac->dados[i]);
             }
             printf("\n");
+            free(pac->dados);
+            free(pac);
+            break;
         }
     }
 }
@@ -91,7 +96,7 @@ void recebe_mensagem(int soquete) {
 int main() {
     int soq = cria_raw_socket("lo");
 
-    manda_pacote(soq, "Ola, socket!");
+    if (manda_pacote(soq, "alo", 4) == -1) {printf("Erro ao mandar pacote\n"); return 1;}
 
     recebe_mensagem(soq);
 
