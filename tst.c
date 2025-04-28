@@ -41,14 +41,35 @@ int cria_raw_socket(char* nome_interface_rede) {
     return soquete;
 }
 
-int manda_pacote(int soquete, char* msg, int tam) {
+pacote* cria_pacote(char* msg, int tam, int tipo /*tem que colocar outros argumentos*/) {
     pacote* pac = malloc(sizeof(pacote));
     pac->tamanho = tam;
     pac->sequencia = 0;
-    pac->tipo = 0;
+    pac->tipo = tipo;
     pac->checksum = 0;
     pac->dados = (uchar*) malloc((pac->tamanho) * sizeof(uchar));
     memcpy((char*)pac->dados, msg, pac->tamanho);
+
+    return pac;
+}
+
+pacote* destroi_pacote(pacote* pac) {
+    free(pac->dados);
+    free(pac);
+
+    return NULL;
+}
+
+/* minha ideia era tirar o char* msg, int tam para chamar a funcao somente com o pacote. separar
+a criação do pacote do envio, assim da pra criar pacotes com tipos variados sem misturar tanto
+as coisas.
+
+seguindo nessa ideia a funcao cria_pacote é usada fora dessa funcao para criar um pacote de
+determinado tipo e depois submetido ao envio
+*/
+int manda_pacote(int soquete, char* msg, int tam) {
+
+    pacote* pac = cria_pacote(msg, tam, 0);
 
     uchar* buffer = gera_mensagem(pac);
 
@@ -62,9 +83,10 @@ int manda_pacote(int soquete, char* msg, int tam) {
 
     // se o tamanho da msg for menor que TAM_MIN entao bytes extras foram colocados
     if (send(soquete, buffer, (pac->tamanho+4 < TAM_MIN) ? TAM_MIN : (pac->tamanho + 4), 0) == -1) return -1;
-    free(pac->dados);
-    free(pac);
+    
+    destroi_pacote(pac);
     free(buffer);
+
     return 0;
 }
 
