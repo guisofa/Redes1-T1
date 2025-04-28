@@ -7,6 +7,8 @@
 #include <string.h>
 #include "pacote.h"
 
+//teste de criação de branch
+
 int cria_raw_socket(char* nome_interface_rede) {
     // Cria arquivo para o socket sem qualquer protocolo
     int soquete = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
