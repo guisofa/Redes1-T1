@@ -29,3 +29,12 @@ pacote* gera_pacote(uchar* msg) {
 
     return p;
 }
+
+uchar calcula_checksum(pacote* p) {
+    int soma = ((p->tamanho & 0x7F) << 1) | ((p->sequencia & 0x10) >> 4);
+    soma += ((p->sequencia & 0x0F) << 4) | (p->tipo & 0x0F);
+    for (int i = 0; i < p->tamanho; i++) {
+        soma += p->dados[i];
+    }
+    return soma & 0xFF;
+}

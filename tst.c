@@ -46,9 +46,9 @@ int manda_pacote(int soquete, char* msg, int tam) {
     pac->tamanho = tam;
     pac->sequencia = 0;
     pac->tipo = 0;
-    pac->checksum = 0;
     pac->dados = (uchar*) malloc((pac->tamanho) * sizeof(uchar));
     memcpy((char*)pac->dados, msg, pac->tamanho);
+    pac->checksum = calcula_checksum(pac);
 
     uchar* buffer = gera_mensagem(pac);
 
@@ -81,6 +81,9 @@ void recebe_mensagem(int soquete) {
             printf("tamanho:   %d\n", pac->tamanho);
             printf("sequencia: %d\n", pac->sequencia);
             printf("tipo:      %d\n", pac->tipo);
+            int novo_checksum = calcula_checksum(pac);
+            if (novo_checksum == pac->checksum) printf("checksum igual: %d\n", novo_checksum);
+            else printf("checksum diferente:\n    original: %d\n    novo: %d\n", pac->checksum, novo_checksum);
             printf("dados: ");
             for (int i = 0; i < pac->tamanho; i++) {
                 printf("%c", pac->dados[i]);

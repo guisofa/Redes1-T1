@@ -34,4 +34,9 @@ uchar* gera_mensagem(pacote* p);
    Bytes nulos extras serao ignorados  */
 pacote* gera_pacote(uchar* msg);
 
+/* Recebe um pacote e calcula o checksum em cima dos campos
+   tamanho, sequencia, tipo e dados;
+   Leva em conta que tam, seq e tipo sao apenas 2 bytes */
+uchar calcula_checksum(pacote* p);
+
 #endif
