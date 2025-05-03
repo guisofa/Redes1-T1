@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include "pacote.h"
 
 int cria_raw_socket(char* nome_interface_rede) {
     // Cria arquivo para o socket sem qualquer protocolo
@@ -42,15 +43,19 @@ int cria_raw_socket(char* nome_interface_rede) {
 
 int main(){
     int testeSoquete;
+    pacote* pac;
 
-    testeSoquete = cria_raw_socket("enp1s0");
+    testeSoquete = cria_raw_socket("lo");
 
-    unsigned char pacote[32];
+    u_char mensagem[32];
     while(1){
-        recv(testeSoquete, pacote, 32, 0);
+        recv(testeSoquete, mensagem, 32, 0);
 
-        printf("pacote: %s\n", pacote);
-        sleep(1);
+        pac = gera_pacote(mensagem);
+
+        printf("mensagem: %s\n", pac->dados);
+
+        sleep(0.4);
     }
     close(testeSoquete);
 

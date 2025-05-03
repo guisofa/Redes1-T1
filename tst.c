@@ -6,8 +6,26 @@
 #include <stdio.h>
 #include <string.h>
 #include "pacote.h"
+#include <unistd.h>
+#include <termios.h>
 
- 
+void configurarModoRaw() {
+    struct termios ttystate;
+
+    tcgetattr(STDIN_FILENO, &ttystate);        // Pega configurações atuais
+    ttystate.c_lflag &= ~(ICANON | ECHO);      // Desativa modo canônico e echo
+    ttystate.c_cc[VMIN] = 1;                   // Espera 1 caractere
+    ttystate.c_cc[VTIME] = 0;
+    tcsetattr(STDIN_FILENO, TCSANOW, &ttystate); // Aplica as novas configurações
+}
+
+void restaurarModoTerminal() {
+    struct termios ttystate;
+    tcgetattr(STDIN_FILENO, &ttystate);
+    ttystate.c_lflag |= (ICANON | ECHO); // Restaura modo canônico e echo
+    tcsetattr(STDIN_FILENO, TCSANOW, &ttystate);
+}
+
 int cria_raw_socket(char* nome_interface_rede) {
     // Cria arquivo para o socket sem qualquer protocolo
     int soquete = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
@@ -46,7 +64,7 @@ pacote* cria_pacote(char* msg, int tam, int tipo /*tem que colocar outros argume
     pac->tamanho = tam;
     pac->sequencia = 0;
     pac->tipo = tipo;
-    pac->checksum = 0;
+    pac->checksum = 0; //tem que calcular
     pac->dados = (uchar*) malloc((pac->tamanho) * sizeof(uchar));
     memcpy((char*)pac->dados, msg, pac->tamanho);
 
@@ -55,6 +73,7 @@ pacote* cria_pacote(char* msg, int tam, int tipo /*tem que colocar outros argume
 
 pacote* destroi_pacote(pacote* pac) {
     free(pac->dados);
+    printf("falha");
     free(pac);
 
     return NULL;
@@ -67,9 +86,7 @@ as coisas.
 seguindo nessa ideia a funcao cria_pacote é usada fora dessa funcao para criar um pacote de
 determinado tipo e depois submetido ao envio
 */
-int manda_pacote(int soquete, char* msg, int tam) {
-
-    pacote* pac = cria_pacote(msg, tam, 0);
+int manda_pacote(int soquete, pacote* pac) {
 
     uchar* buffer = gera_mensagem(pac);
 
@@ -84,7 +101,7 @@ int manda_pacote(int soquete, char* msg, int tam) {
     // se o tamanho da msg for menor que TAM_MIN entao bytes extras foram colocados
     if (send(soquete, buffer, (pac->tamanho+4 < TAM_MIN) ? TAM_MIN : (pac->tamanho + 4), 0) == -1) return -1;
     
-    destroi_pacote(pac);
+    //destroi_pacote(pac);
     free(buffer);
 
     return 0;
@@ -117,10 +134,45 @@ void recebe_mensagem(int soquete) {
 
 int main() {
     int soq = cria_raw_socket("lo");
+    pacote* meuPacote;
 
-    if (manda_pacote(soq, "alo", 4) == -1) {printf("Erro ao mandar pacote\n"); return 1;}
+    meuPacote = cria_pacote("alo", 4, 0);
+    
+    if (manda_pacote(soq, meuPacote) == -1) {printf("Erro ao mandar pacote\n"); return 1;}
 
     recebe_mensagem(soq);
 
+//    destroi_pacote(meuPacote);
+
+    configurarModoRaw();
+
+    printf("Pressione teclas (Q para sair):\n");
+
+    char c;
+    while (1) {
+        read(STDIN_FILENO, &c, 1);
+        if (c == 'w') {
+            printf("Você apertou W!\n");
+            meuPacote = cria_pacote("w", 2, 0);
+        } else if (c == 'a') {
+            printf("Você apertou A!\n");
+            meuPacote = cria_pacote("a", 2, 0);
+        } else if (c == 's') {
+            printf("Você apertou S!\n");
+            meuPacote = cria_pacote("s", 2, 0);
+        } else if (c == 'd') {
+            printf("Você apertou D!\n");
+            meuPacote = cria_pacote("d", 2, 0);
+        } else if (c == 'q') {
+            printf("Saindo...\n");
+            break;
+        }
+        if(meuPacote){
+            manda_pacote(soq, meuPacote);
+            meuPacote = NULL;
+        }
+    }
+
+    restaurarModoTerminal();
     return 0;
 }
