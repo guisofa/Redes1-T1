@@ -72,8 +72,8 @@ pacote* cria_pacote(char* msg, int tam, int tipo /*tem que colocar outros argume
 }
 
 pacote* destroi_pacote(pacote* pac) {
-    free(pac->dados);
-    printf("falha");
+    if(pac->tamanho)
+        free(pac->dados);
     free(pac);
 
     return NULL;
@@ -142,7 +142,7 @@ int main() {
 
     recebe_mensagem(soq);
 
-//    destroi_pacote(meuPacote);
+    destroi_pacote(meuPacote);
 
     configurarModoRaw();
 
@@ -169,7 +169,7 @@ int main() {
         }
         if(meuPacote){
             manda_pacote(soq, meuPacote);
-            meuPacote = NULL;
+            destroi_pacote(meuPacote);
         }
     }
 
