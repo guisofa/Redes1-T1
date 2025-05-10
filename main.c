@@ -61,7 +61,7 @@ unsigned char* serializaPacote(pacote package){
 
     buffer = malloc(sizeof(unsigned char) * tam + 32);
 
-    insereBits(buffer, &bitGuia, package.marcador, 8);
+    insereBits(buffer, &bitGuia, 0xf7, 8);
     insereBits(buffer, &bitGuia, package.tamanho, 7);
     insereBits(buffer, &bitGuia, package.sequencia, 5);
     insereBits(buffer, &bitGuia, package.tipo, 4);
@@ -85,7 +85,6 @@ int main(){
     testeSoquete = cria_raw_socket("lo");
 
     pacote testePacote;
-    testePacote.marcador = 0x7E;
     testePacote.tamanho = 0;
     testePacote.sequencia = 4;
     testePacote.tipo = 3;

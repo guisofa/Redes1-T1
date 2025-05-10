@@ -41,23 +41,77 @@ int cria_raw_socket(char* nome_interface_rede) {
     return soquete;
 }
 
+int manda_pacote(int soquete, pacote* pac) {
+
+    uchar* buffer = gera_mensagem(pac);
+
+    /* // nao tenho ideia do que isso faz, mas não funciona sem.
+          update: agora funciona, mas vou deixar aqui so pra ter certeza
+    struct sockaddr_ll destino = {0};
+    destino.sll_family = AF_PACKET;
+    destino.sll_protocol = htons(ETH_P_ALL);
+    destino.sll_ifindex = if_nametoindex("lo");
+    */
+
+    // se o tamanho da msg for menor que TAM_MIN entao bytes extras foram colocados
+    if (send(soquete, buffer, (pac->tamanho+4 < TAM_MIN) ? TAM_MIN : (pac->tamanho + 4), 0) == -1) return -1;
+    
+    //destroi_pacote(pac);
+    free(buffer);
+
+    return 0;
+}
+
+pacote* recebe_pacote(int soquete){
+    uchar buffer[PACOTE_TAM_MAX];
+
+    while (1) {
+        int bytes_recebidos = recv(soquete, buffer, PACOTE_TAM_MAX, 0);
+        if (bytes_recebidos < 0) printf("erro recv\n");
+        if (bytes_recebidos >= 4/*tamanho minimo da msg*/ && buffer[0] == MARCADORINI) {
+            pacote* pac = gera_pacote(buffer);
+            return pac;;
+        }
+    }
+
+}
+
+int pacote_erro(pacote* pac){ return 0;}
+
+pacote* recebe_mensagem(int soquete) {
+    pacote* pac;
+    pacote* nack;
+
+    pac = recebe_pacote(soquete);
+
+    while (pacote_erro(pac)) {
+        destroi_pacote(pac);
+        nack = cria_pacote("", 0, 1);
+        manda_pacote(soquete, nack);
+        pac = recebe_pacote(soquete);
+        destroi_pacote(nack);
+    }
+
+    return pac;
+}
+
+
 int main(){
-    int testeSoquete;
+    int soq;
     pacote* pac;
 
-    testeSoquete = cria_raw_socket("lo");
+    soq = cria_raw_socket("lo");
 
-    u_char mensagem[32];
+    uchar mensagem[PACOTE_TAM_MAX];
     while(1){
-        recv(testeSoquete, mensagem, 32, 0);
 
-        pac = gera_pacote(mensagem);
+        pac = recebe_mensagem(soq);
 
         printf("mensagem: %s\n", pac->dados);
 
         sleep(0.4);
     }
-    close(testeSoquete);
+    close(soq);
 
     return 0;
 }

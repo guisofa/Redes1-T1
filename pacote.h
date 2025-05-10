@@ -34,4 +34,14 @@ uchar* gera_mensagem(pacote* p);
    Bytes nulos extras serao ignorados  */
 pacote* gera_pacote(uchar* msg);
 
+uchar calcula_checksum(pacote* p);
+
+/* cria um pacote, parece redundante mas se nao tiver mensagem da
+pra criar um pacote do zero, falta argumentos e usar o checksum */
+pacote* cria_pacote(char* msg, int tam, int tipo);
+
+/* da free no pacote e nos dados */
+pacote* destroi_pacote(pacote* pac);
+
+
 #endif

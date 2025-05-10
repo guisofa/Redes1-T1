@@ -29,3 +29,33 @@ pacote* gera_pacote(uchar* msg) {
 
     return p;
 }
+
+uchar calcula_checksum(pacote* p) {
+    int soma = ((p->tamanho & 0x7F) << 1) | ((p->sequencia & 0x10) >> 4);
+    soma += ((p->sequencia & 0x0F) << 4) | (p->tipo & 0x0F);
+    for (int i = 0; i < p->tamanho; i++) {
+        soma += p->dados[i];
+    }
+    return soma & 0xFF;
+}
+
+pacote* cria_pacote(char* msg, int tam, int tipo) {
+    pacote* pac = malloc(sizeof(pacote));
+    pac->tamanho = tam;
+    pac->sequencia = 0;
+    pac->tipo = tipo;
+    pac->checksum = 0; //tem que calcular
+    pac->dados = (uchar*) malloc((pac->tamanho) * sizeof(uchar));
+    memcpy((char*)pac->dados, msg, pac->tamanho);
+
+    return pac;
+}
+
+pacote* destroi_pacote(pacote* pac) {
+    if(pac->tamanho)
+        free(pac->dados);
+    free(pac);
+
+    return NULL;
+}
+

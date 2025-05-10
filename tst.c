@@ -59,25 +59,6 @@ int cria_raw_socket(char* nome_interface_rede) {
     return soquete;
 }
 
-pacote* cria_pacote(char* msg, int tam, int tipo /*tem que colocar outros argumentos*/) {
-    pacote* pac = malloc(sizeof(pacote));
-    pac->tamanho = tam;
-    pac->sequencia = 0;
-    pac->tipo = tipo;
-    pac->checksum = 0; //tem que calcular
-    pac->dados = (uchar*) malloc((pac->tamanho) * sizeof(uchar));
-    memcpy((char*)pac->dados, msg, pac->tamanho);
-
-    return pac;
-}
-
-pacote* destroi_pacote(pacote* pac) {
-    if(pac->tamanho)
-        free(pac->dados);
-    free(pac);
-
-    return NULL;
-}
 
 /* minha ideia era tirar o char* msg, int tam para chamar a funcao somente com o pacote. separar
 a criação do pacote do envio, assim da pra criar pacotes com tipos variados sem misturar tanto
@@ -107,7 +88,7 @@ int manda_pacote(int soquete, pacote* pac) {
     return 0;
 }
 
-void recebe_mensagem(int soquete) {
+pacote* recebe_pacote(int soquete){
     uchar buffer[PACOTE_TAM_MAX];
 
     while (1) {
@@ -125,16 +106,35 @@ void recebe_mensagem(int soquete) {
                 printf("%c", pac->dados[i]);
             }
             printf("\n");
-            free(pac->dados);
-            free(pac);
-            break;
+            return pac;;
         }
     }
+
+}
+
+int pacote_erro(pacote* pac){ return 0;}
+
+pacote* recebe_mensagem(int soquete) {
+    pacote* pac;
+    pacote* nack;
+
+    pac = recebe_pacote(soquete);
+
+    while (pacote_erro(pac)) {
+        destroi_pacote(pac);
+        nack = cria_pacote("", 0, 1);
+        manda_pacote(soquete, nack);
+        pac = recebe_pacote(soquete);
+        destroi_pacote(nack);
+    }
+
+    return pac;
 }
 
 int main() {
     int soq = cria_raw_socket("lo");
     pacote* meuPacote;
+    pacote* resposta;
 
     meuPacote = cria_pacote("alo", 4, 0);
     
@@ -169,7 +169,21 @@ int main() {
         }
         if(meuPacote){
             manda_pacote(soq, meuPacote);
+
+            resposta = recebe_mensagem(soq);
+            /*
+                recebe resposta e processa, se for ok move para onde quer mover e atualiza uma interface
+                se nao for ok n faz nada apenas deleta o pacote e tenta de novo
+
+                o timeout precisa ser do lado do cliente
+            */
+
+            if(resposta->tipo == 2){
+                printf("permite ele mover para a direção solicitada\n");
+            }
+
             destroi_pacote(meuPacote);
+            destroi_pacote(resposta);
         }
     }
 
