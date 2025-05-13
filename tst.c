@@ -5,6 +5,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <time.h>
 #include "pacote.h"
 
  
@@ -41,67 +44,70 @@ int cria_raw_socket(char* nome_interface_rede) {
     return soquete;
 }
 
-int manda_pacote(int soquete, char* msg, int tam) {
-    pacote* pac = malloc(sizeof(pacote));
-    pac->tamanho = tam;
-    pac->sequencia = 0;
-    pac->tipo = 0;
-    pac->dados = (uchar*) malloc((pac->tamanho) * sizeof(uchar));
-    memcpy((char*)pac->dados, msg, pac->tamanho);
-    pac->checksum = calcula_checksum(pac);
-
+int manda_pacote(int soquete, pacote* pac) {
     uchar* buffer = gera_mensagem(pac);
 
-    /* // nao tenho ideia do que isso faz, mas não funciona sem.
-          update: agora funciona, mas vou deixar aqui so pra ter certeza
-    struct sockaddr_ll destino = {0};
-    destino.sll_family = AF_PACKET;
-    destino.sll_protocol = htons(ETH_P_ALL);
-    destino.sll_ifindex = if_nametoindex("lo");
-    */
-
     // se o tamanho da msg for menor que TAM_MIN entao bytes extras foram colocados
-    if (send(soquete, buffer, (pac->tamanho+4 < TAM_MIN) ? TAM_MIN : (pac->tamanho + 4), 0) == -1) return -1;
-    free(pac->dados);
-    free(pac);
+    if (send(soquete, buffer, (pac->tamanho+4 < TAM_MIN) ? TAM_MIN : (pac->tamanho + 4), 0) == -1) return 0;
     free(buffer);
-    return 0;
+
+    return 1;
 }
 
-void recebe_mensagem(int soquete) {
+pacote* recebe_pacote(int soquete) {
     uchar buffer[PACOTE_TAM_MAX];
 
     while (1) {
         int bytes_recebidos = recv(soquete, buffer, PACOTE_TAM_MAX, 0);
-        if (bytes_recebidos < 0) printf("erro recv\n");
+        if (bytes_recebidos < 0) {printf("erro recv\n"); return NULL;}
         if (bytes_recebidos >= 4/*tamanho minimo da msg*/ && buffer[0] == MARCADORINI) {
             pacote* pac = gera_pacote(buffer);
-            printf("recebido:\n");
-            printf("marcador:  %#02X\n", MARCADORINI);
-            printf("tamanho:   %d\n", pac->tamanho);
-            printf("sequencia: %d\n", pac->sequencia);
-            printf("tipo:      %d\n", pac->tipo);
-            int novo_checksum = calcula_checksum(pac);
-            if (novo_checksum == pac->checksum) printf("checksum igual: %d\n", novo_checksum);
-            else printf("checksum diferente:\n    original: %d\n    novo: %d\n", pac->checksum, novo_checksum);
-            printf("dados: ");
-            for (int i = 0; i < pac->tamanho; i++) {
-                printf("%c", pac->dados[i]);
-            }
-            printf("\n");
-            free(pac->dados);
-            free(pac);
-            break;
+            if (pac->tipo == ACK || pac->tipo == NACK) {destroi_pacote(pac); continue;}
+            return pac;
         }
     }
+    return NULL;
+}
+
+int recebe_arquivo(int soq) {
+    FILE* arq = fopen("2.txt", "w");
+    pacote *pacr, *pacs;
+    char ack;
+    unsigned int ultima_seq = 100;
+    
+    while (1) {
+        ack = NACK;
+
+        pacr = recebe_pacote(soq);
+        if (calcula_checksum(pacr) == pacr->checksum) {
+            if (pacr->tipo == FIM_ARQ) {
+                destroi_pacote(pacr);
+                break;
+            }
+            ack = ACK;
+            if (ultima_seq != pacr->sequencia) {
+                fwrite(pacr->dados, 1, pacr->tamanho, arq);
+                ultima_seq = pacr->sequencia;
+            }
+            else {
+                //printf("%d/%d: %.*s\n\n", ultima_seq, pacr->sequencia, pacr->tamanho, pacr->dados);
+            }
+        }
+
+        if (!(pacs = cria_pacote((uchar*)"", 0, pacr->sequencia, ack))) return 0;
+        if (!(manda_pacote(soq, pacs))) return 0;
+
+        destroi_pacote(pacr);
+        destroi_pacote(pacs);
+    }
+    fclose(arq);
+    return 1;
 }
 
 int main() {
     int soq = cria_raw_socket("lo");
 
-    if (manda_pacote(soq, "alo", 4) == -1) {printf("Erro ao mandar pacote\n"); return 1;}
-
-    recebe_mensagem(soq);
+    recebe_arquivo(soq);
 
     return 0;
 }

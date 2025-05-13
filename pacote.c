@@ -1,10 +1,32 @@
 #include "pacote.h"
 
+pacote* cria_pacote(uchar* msg, int tam, int seq, int tipo) {
+    pacote* pac = malloc(sizeof(pacote)); if (!pac) return NULL;
+    pac->tamanho = tam;
+    pac->sequencia = seq;
+    pac->tipo = tipo;
+
+    pac->dados = (uchar*) malloc((pac->tamanho) * sizeof(uchar)); if (!pac->dados) return NULL;
+    memcpy(pac->dados, msg, pac->tamanho);
+
+    pac->checksum = calcula_checksum(pac);
+
+    return pac;
+}
+
+pacote* destroi_pacote(pacote* pac) {
+    free(pac->dados);
+    free(pac);
+
+    return NULL;
+}
+
 uchar* gera_mensagem(pacote* p) {
     int bytes_extra = TAM_MIN - (p->tamanho + 4);
     if (bytes_extra < 0) bytes_extra = 0;
 
     uchar* msg = malloc((p->tamanho + 4 + bytes_extra) * sizeof(uchar));
+    if (!msg) return NULL;
 
     msg[0] = MARCADORINI;
     // 7 bits de tamanho e o mais significativo de sequencia formam um byte
@@ -19,12 +41,12 @@ uchar* gera_mensagem(pacote* p) {
 }
 
 pacote* gera_pacote(uchar* msg) {
-    pacote *p = malloc(sizeof(pacote));
+    pacote *p = malloc(sizeof(pacote)); if (!p) return NULL;
     p->tamanho = (msg[1] & 0xFE) >> 1;
     p->sequencia = ((msg[1] & 0x01) << 4) | ((msg[2] & 0xF0) >> 4);
     p->tipo = msg[2] & 0x0F;
     p->checksum = msg[3];
-    p->dados = malloc(p->tamanho * sizeof(uchar));
+    p->dados = malloc(p->tamanho * sizeof(uchar)); if (!p->dados) return NULL;
     memcpy(p->dados, &msg[4], p->tamanho);
 
     return p;

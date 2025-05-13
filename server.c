@@ -5,7 +5,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
+#include <time.h>
+#include "pacote.h"
 
 int cria_raw_socket(char* nome_interface_rede) {
     // Cria arquivo para o socket sem qualquer protocolo
@@ -40,19 +43,76 @@ int cria_raw_socket(char* nome_interface_rede) {
     return soquete;
 }
 
-int main(){
-    int testeSoquete;
+int manda_pacote(int soquete, pacote* pac) {
+    uchar* buffer = gera_mensagem(pac);
 
-    testeSoquete = cria_raw_socket("enp1s0");
+    // se o tamanho da msg for menor que TAM_MIN entao bytes extras foram colocados
+    if (send(soquete, buffer, (pac->tamanho+4 < TAM_MIN) ? TAM_MIN : (pac->tamanho + 4), 0) == -1) return 0;
+    free(buffer);
+    printf("mandado: %d\n", pac->sequencia);
+    return 1;
+}
 
-    unsigned char pacote[32];
-    while(1){
-        recv(testeSoquete, pacote, 32, 0);
+pacote* recebe_pacote(int soquete) {
+    uchar buffer[PACOTE_TAM_MAX];
 
-        printf("pacote: %s\n", pacote);
-        sleep(1);
+    while (1) {
+        int bytes_recebidos = recv(soquete, buffer, PACOTE_TAM_MAX, 0);
+        if (bytes_recebidos < 0) {printf("erro recv\n"); return NULL;}
+        if (bytes_recebidos >= 4/*tamanho minimo da msg*/ && buffer[0] == MARCADORINI) {
+            pacote* pac = gera_pacote(buffer);
+            if (pac->tipo == DADOS || pac->tipo == FIM_ARQ) {destroi_pacote(pac); continue;}
+            printf("recebido: %d\n", pac->tipo);
+            return pac;
+        }
     }
-    close(testeSoquete);
+    return NULL;
+}
 
+int manda_arquivo(int soq, FILE* arq) {
+    uchar buffer[DADOS_TAM_MAX];
+    pacote *pacr, *pacs; // pacote recieved/sent
+    int bytes_lidos;
+    int seq = 0;
+    char ack;
+
+    while ((bytes_lidos = fread(buffer, 1, DADOS_TAM_MAX, arq)) > 0) {
+        ack = NACK;
+        if (!(pacs = cria_pacote(buffer, bytes_lidos, seq, DADOS))) return 0;
+        
+        while (ack != ACK) {
+            if (!manda_pacote(soq, pacs)) return 0;
+
+            pacr = recebe_pacote(soq);
+            if (pacr->checksum == calcula_checksum(pacr))
+                if (pacr->tipo == ACK) ack = ACK;
+            destroi_pacote(pacr);
+        }
+        seq = (seq + 1) % 32;
+        destroi_pacote(pacs);
+    }
+
+    if (!(pacs = cria_pacote((uchar*)"", 0, seq, FIM_ARQ))) return 0;
+    while (1) {
+        if (!manda_pacote(soq, pacs)) return 0;
+        pacr = recebe_pacote(soq);
+        if (pacr->tipo == ACK) {
+            destroi_pacote(pacr);
+            break;
+        }
+    }
+    return 1;
+}
+
+int main(){
+    int soq = cria_raw_socket("lo");
+
+    struct stat st;
+    if (stat("1.txt", &st) == -1) {printf("arquivo nao existe\n"); return 1;}
+
+    FILE* arquivo = fopen("1.txt", "r");
+    if (!manda_arquivo(soq, arquivo)) {printf("erro ao enviar arquivo\n"); return 1;}
+
+    fclose(arquivo);
     return 0;
 }

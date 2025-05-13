@@ -10,6 +10,23 @@
 #define DADOS_TAM_MAX 127
 #define TAM_MIN 14 // tamanho minimo da msg a ser enviada por send
 
+#define ACK 0
+#define NACK 1
+#define OK_ACK 2
+//#define ??? 3
+#define TAMANHO 4
+#define DADOS 5
+#define TEXTO 6
+#define VIDEO 7
+#define IMAGEM 8
+#define FIM_ARQ 9
+#define DIREITA 10
+#define CIMA 11
+#define BAIXO 12
+#define ESQUERDA 13
+//#define ??? 14
+#define ERRO 15
+
 typedef unsigned char uchar;
 
 typedef struct pacote{
@@ -19,6 +36,12 @@ typedef struct pacote{
     uchar checksum;
     uchar* dados;
 } pacote;
+
+/* Cria uma struct pacote completa usando os parametros recebidos */
+pacote* cria_pacote(uchar* msg, int tam, int seq, int tipo);
+
+/* Libera a memoria alocada em pac e retorna NULL */
+pacote* destroi_pacote(pacote* pac);
 
 /* Recebe um pacote e transforma em uma string onde
    o primeiro byte eh o marcador de inicio

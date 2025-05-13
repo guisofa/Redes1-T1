@@ -1,21 +1,19 @@
 CFLAGS = -Wall -g
 
-all: main server tst
+all: server tst
 
-main: main.o pacote.o
-	gcc $(CFLAGS) main.o pacote.o -o main
-main.o: main.c
-	gcc $(CFLAGS) -c main.c
-pacote.o: pacote.c
-	gcc $(CFLAGS) -c pacote.c
-server: server.o
-	gcc $(CFLAGS) server.o -o server
-server.o: server.c
-	gcc $(CFLAGS) -c server.c
 tst: tst.o pacote.o
 	gcc $(CFLAGS) tst.o pacote.o -o tst
-tst.o : 
+server: server.o pacote.o
+	gcc $(CFLAGS) server.o pacote.o -o server
+
+tst.o : tst.c
 	gcc $(CFLAGS) -c tst.c
+server.o: server.c
+	gcc $(CFLAGS) -c server.c
+pacote.o: pacote.c
+	gcc $(CFLAGS) -c pacote.c
+
 clean:
 	rm -f *.o
 purge:
