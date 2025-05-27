@@ -8,9 +8,28 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <time.h>
+#include <termios.h>
 #include "pacote.h"
+#include "jogo.h"
 
- 
+
+void configurarModoRaw() {
+    struct termios ttystate;
+
+    tcgetattr(STDIN_FILENO, &ttystate);        // Pega configurações atuais
+    ttystate.c_lflag &= ~(ICANON | ECHO);      // Desativa modo canônico e echo
+    ttystate.c_cc[VMIN] = 1;                   // Espera 1 caractere
+    ttystate.c_cc[VTIME] = 0;
+    tcsetattr(STDIN_FILENO, TCSANOW, &ttystate); // Aplica as novas configurações
+}
+
+void restaurarModoTerminal() {
+    struct termios ttystate;
+    tcgetattr(STDIN_FILENO, &ttystate);
+    ttystate.c_lflag |= (ICANON | ECHO); // Restaura modo canônico e echo
+    tcsetattr(STDIN_FILENO, TCSANOW, &ttystate);
+}
+
 int cria_raw_socket(char* nome_interface_rede) {
     // Cria arquivo para o socket sem qualquer protocolo
     int soquete = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
@@ -44,54 +63,20 @@ int cria_raw_socket(char* nome_interface_rede) {
     return soquete;
 }
 
-int manda_pacote(int soquete, pacote* pac) {
-    uchar* buffer = gera_mensagem(pac);
-
-    // se o tamanho da msg for menor que TAM_MIN entao bytes extras foram colocados
-    if (send(soquete, buffer, (pac->tamanho+4 < TAM_MIN) ? TAM_MIN : (pac->tamanho + 4), 0) == -1) return 0;
-    free(buffer);
-
-    return 1;
-}
-
-pacote* recebe_pacote(int soquete) {
-    uchar buffer[PACOTE_TAM_MAX];
-
-    while (1) {
-        int bytes_recebidos = recv(soquete, buffer, PACOTE_TAM_MAX, 0);
-        if (bytes_recebidos < 0) {printf("erro recv\n"); return NULL;}
-        if (bytes_recebidos >= 4/*tamanho minimo da msg*/ && buffer[0] == MARCADORINI) {
-            pacote* pac = gera_pacote(buffer);
-            if (pac->tipo == ACK || pac->tipo == NACK) {destroi_pacote(pac); continue;}
-            return pac;
-        }
-    }
-    return NULL;
-}
-
-int recebe_arquivo(int soq) {
-    FILE* arq = fopen("2.txt", "w");
-    pacote *pacr, *pacs;
+int recebe_arquivo(int soq, FILE* arq) {
+    printf("Recebendo arquivo\n");
+    pacote *pacr, *pacs; // pacote recieved/sent
     char ack;
-    unsigned int ultima_seq = 100;
     
     while (1) {
         ack = NACK;
 
         pacr = recebe_pacote(soq);
         if (calcula_checksum(pacr) == pacr->checksum) {
-            if (pacr->tipo == FIM_ARQ) {
-                destroi_pacote(pacr);
-                break;
-            }
             ack = ACK;
-            if (ultima_seq != pacr->sequencia) {
-                fwrite(pacr->dados, 1, pacr->tamanho, arq);
-                ultima_seq = pacr->sequencia;
-            }
-            else {
-                //printf("%d/%d: %.*s\n\n", ultima_seq, pacr->sequencia, pacr->tamanho, pacr->dados);
-            }
+            if (pacr->tipo == FIM_ARQ)
+                break;
+            fwrite(pacr->dados, 1, pacr->tamanho, arq);
         }
 
         if (!(pacs = cria_pacote((uchar*)"", 0, pacr->sequencia, ack))) return 0;
@@ -100,14 +85,118 @@ int recebe_arquivo(int soq) {
         destroi_pacote(pacr);
         destroi_pacote(pacs);
     }
-    fclose(arq);
+    if (!(pacs = cria_pacote((uchar*)"", 0, pacr->sequencia, ACK))) return 0;
+    if (!(manda_pacote(soq, pacs))) return 0;
+
+    destroi_pacote(pacr);
+    destroi_pacote(pacs);
+
+    printf("Arquivo recebido\n");
     return 1;
 }
 
 int main() {
     int soq = cria_raw_socket("lo");
 
-    recebe_arquivo(soq);
 
+    int posx = 0, posy = 0;
+    tile** tabuleiro = inicica_jogo(0);
+    imprime_mapa(tabuleiro, 0, posx, posy);
+
+    configurarModoRaw();
+
+    char c;
+    int arq_recebidos = 0;
+    pacote *pacr, *pacs;
+    int seq = 0;
+    int ack;
+    while (arq_recebidos < 8) {
+        ack = NACK;
+        read(STDIN_FILENO, &c, 1);
+        if (c == 'w') {
+            pacs = cria_pacote((uchar*)"", 0, seq, CIMA);
+        } else if (c == 'a') {
+            pacs = cria_pacote((uchar*)"", 0, seq, ESQUERDA);
+        } else if (c == 's') {
+            pacs = cria_pacote((uchar*)"", 0, seq, BAIXO);
+        } else if (c == 'd') {
+            pacs = cria_pacote((uchar*)"", 0, seq, DIREITA);
+        } else if (c == 'q') {
+            break;
+        } else {
+            continue;
+        }
+        
+        while (ack == NACK) {
+            manda_pacote(soq, pacs);
+            
+            pacr = recebe_pacote(soq);
+            if (pacr->checksum == calcula_checksum(pacr)) {
+                if (pacr->tipo != NACK) {
+                    ack = pacr->tipo;
+                    break;
+                }
+
+            }
+            destroi_pacote(pacr);
+        }
+        destroi_pacote(pacs);
+        seq = (seq + 1) % 32;
+
+        if (ack == ACK) {
+            imprime_mapa(tabuleiro, 0, posx, posy);
+            destroi_pacote(pacr);
+            continue;
+        }
+        else if (ack == OK_ACK) {
+            destroi_pacote(pacr);
+            if (c == 'w') {
+                posy++;
+                tabuleiro[posx][posy].passou = 1;
+            } else if (c == 'a') {
+                posx--;
+                tabuleiro[posx][posy].passou = 1;
+            } else if (c == 's') {
+                posy--;
+                tabuleiro[posx][posy].passou = 1;
+            } else {
+                posx++;
+                tabuleiro[posx][posy].passou = 1;
+            }
+            imprime_mapa(tabuleiro, 0, posx, posy);
+        } else if (ack == IMAGEM || ack == TEXTO || ack == VIDEO) {
+            if (c == 'w') {
+                posy++;
+                tabuleiro[posx][posy].passou = 1;
+            } else if (c == 'a') {
+                posx--;
+                tabuleiro[posx][posy].passou = 1;
+            } else if (c == 's') {
+                posy--;
+                tabuleiro[posx][posy].passou = 1;
+            } else {
+                posx++;
+                tabuleiro[posx][posy].passou = 1;
+            }
+            imprime_mapa(tabuleiro, 0, posx, posy);
+
+            pacs = cria_pacote((uchar*)"", 0, 0, ACK);
+            if (!(manda_pacote(soq, pacs))) return 0;
+
+            uchar nome[64]; strcpy((char*)nome, (char*)pacr->dados);
+            strcat((char*)nome, "copia");
+            FILE* arq = fopen((char*)nome, "w");
+
+            recebe_arquivo(soq, arq);
+            destroi_pacote(pacr);
+            fclose(arq);
+            arq_recebidos++;
+        } else if (ack == DADOS) exit(1);
+    }
+
+    restaurarModoTerminal();
+
+
+    tabuleiro = libera_tabuleiro(tabuleiro);
     return 0;
 }

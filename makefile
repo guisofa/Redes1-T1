@@ -2,10 +2,10 @@ CFLAGS = -Wall -g
 
 all: server tst
 
-tst: tst.o pacote.o
-	gcc $(CFLAGS) tst.o pacote.o -o tst
-server: server.o pacote.o
-	gcc $(CFLAGS) server.o pacote.o -o server
+tst: tst.o pacote.o jogo.o
+	gcc $(CFLAGS) tst.o pacote.o jogo.o -o tst
+server: server.o pacote.o jogo.o
+	gcc $(CFLAGS) server.o pacote.o jogo.o -o server
 
 tst.o : tst.c
 	gcc $(CFLAGS) -c tst.c
@@ -13,6 +13,8 @@ server.o: server.c
 	gcc $(CFLAGS) -c server.c
 pacote.o: pacote.c
 	gcc $(CFLAGS) -c pacote.c
+jogo.o : jogo.c
+	gcc $(CFLAGS) -c jogo.c
 
 clean:
 	rm -f *.o

@@ -1,12 +1,21 @@
 #ifndef __PACOTE__
 #define __PACOTE__
 
+#include <arpa/inet.h>
+#include <net/ethernet.h>
+#include <linux/if_packet.h>
+#include <net/if.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define MARCADORINI 126 // 01111110
-#define PACOTE_TAM_MAX 131
+#define PACOTE_TAM_MAX 131 * 2 // possiveis bytes 0xff extras apos 0x88 e 0x81
 #define DADOS_TAM_MAX 127
 #define TAM_MIN 14 // tamanho minimo da msg a ser enviada por send
 
@@ -51,11 +60,14 @@ pacote* destroi_pacote(pacote* pac);
    o quinto pra frente sao os dados;
    Caso a mensagem tenha menos de TAM_MIN bytes entao bytes nulos
    serao colocados apos os dados para alcancar o valor minimo  */
-uchar* gera_mensagem(pacote* p);
+uchar* gera_mensagem(pacote* p, int* bytes_adicionados);
 
 /* Recebe uma string e gera uma struct pacote a partir dela;
    Bytes nulos extras serao ignorados  */
 pacote* gera_pacote(uchar* msg);
+
+int manda_pacote(int soquete, pacote* pac);
+pacote* recebe_pacote(int soquete);
 
 /* Recebe um pacote e calcula o checksum em cima dos campos
    tamanho, sequencia, tipo e dados;

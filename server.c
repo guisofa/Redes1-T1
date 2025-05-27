@@ -8,7 +8,9 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <time.h>
+#include <dirent.h>
 #include "pacote.h"
+#include "jogo.h"
 
 int cria_raw_socket(char* nome_interface_rede) {
     // Cria arquivo para o socket sem qualquer protocolo
@@ -43,33 +45,36 @@ int cria_raw_socket(char* nome_interface_rede) {
     return soquete;
 }
 
-int manda_pacote(int soquete, pacote* pac) {
-    uchar* buffer = gera_mensagem(pac);
+int descobrir_extensao(char* base, uchar* nome) {
+    int tipo = 0;
+    DIR *d;
+    struct dirent *dir;
+    d = opendir(".");
 
-    // se o tamanho da msg for menor que TAM_MIN entao bytes extras foram colocados
-    if (send(soquete, buffer, (pac->tamanho+4 < TAM_MIN) ? TAM_MIN : (pac->tamanho + 4), 0) == -1) return 0;
-    free(buffer);
-    printf("mandado: %d\n", pac->sequencia);
-    return 1;
-}
-
-pacote* recebe_pacote(int soquete) {
-    uchar buffer[PACOTE_TAM_MAX];
-
-    while (1) {
-        int bytes_recebidos = recv(soquete, buffer, PACOTE_TAM_MAX, 0);
-        if (bytes_recebidos < 0) {printf("erro recv\n"); return NULL;}
-        if (bytes_recebidos >= 4/*tamanho minimo da msg*/ && buffer[0] == MARCADORINI) {
-            pacote* pac = gera_pacote(buffer);
-            if (pac->tipo == DADOS || pac->tipo == FIM_ARQ) {destroi_pacote(pac); continue;}
-            printf("recebido: %d\n", pac->tipo);
-            return pac;
+    if (d) {
+        while ((dir = readdir(d)) != NULL) {
+            if (strncmp(dir->d_name, base, strlen(base)) == 0) {
+                const char *p = dir->d_name + strlen(base);
+                if (*p == '.') {
+                    if (strcmp(p, ".jpg") == 0) tipo = IMAGEM;
+                    else if (strcmp(p, ".txt") == 0) tipo = TEXTO;
+                    else if (strcmp(p, ".mp4") == 0) tipo = VIDEO;
+                }
+            }
         }
+        closedir(d);
+    } else {
+        perror("Nao foi possível abrir o diretorio");
     }
-    return NULL;
+    strcpy((char*)nome, base);
+    if (tipo == IMAGEM) strcat((char*)nome, ".jpg");
+    else if (tipo == TEXTO) strcat((char*)nome, ".txt");
+    else if (tipo == VIDEO) strcat((char*)nome, ".mp4");
+    return tipo;
 }
 
 int manda_arquivo(int soq, FILE* arq) {
+    printf("Enviando arquivo\n");
     uchar buffer[DADOS_TAM_MAX];
     pacote *pacr, *pacs; // pacote recieved/sent
     int bytes_lidos;
@@ -84,8 +89,9 @@ int manda_arquivo(int soq, FILE* arq) {
             if (!manda_pacote(soq, pacs)) return 0;
 
             pacr = recebe_pacote(soq);
-            if (pacr->checksum == calcula_checksum(pacr))
+            if (pacr->checksum == calcula_checksum(pacr)) {
                 if (pacr->tipo == ACK) ack = ACK;
+            }
             destroi_pacote(pacr);
         }
         seq = (seq + 1) % 32;
@@ -101,18 +107,84 @@ int manda_arquivo(int soq, FILE* arq) {
             break;
         }
     }
+    printf("Terminou de enviar\n");
     return 1;
 }
 
 int main(){
+    srand(0);
     int soq = cria_raw_socket("lo");
 
-    struct stat st;
-    if (stat("1.txt", &st) == -1) {printf("arquivo nao existe\n"); return 1;}
+    int posx = 0, posy = 0;
+    tile** tabuleiro = inicica_jogo(1);
+    imprime_mapa(tabuleiro, 1, posx, posy);
 
-    FILE* arquivo = fopen("1.txt", "r");
-    if (!manda_arquivo(soq, arquivo)) {printf("erro ao enviar arquivo\n"); return 1;}
+    int arq_enviados = 0;
+    pacote *pacr, *pacs;
+    int ack;
+    while (arq_enviados < 8) {
+        ack = NACK;
 
-    fclose(arquivo);
+        pacr = recebe_pacote(soq);
+        if (calcula_checksum(pacr) == pacr->checksum) {
+            ack = ACK;
+            if (pacr->tipo == CIMA && posy < TAM_TABULEIRO-1) {
+                posy++;
+                if (tabuleiro[posx][posy].passou == 0) tabuleiro[posx][posy].passou = 1;
+                ack = OK_ACK;
+            } else if (pacr->tipo == ESQUERDA && posx > 0) {
+                posx--;
+                if (tabuleiro[posx][posy].passou == 0) tabuleiro[posx][posy].passou = 1;
+                ack = OK_ACK;
+            } else if (pacr->tipo == BAIXO && posy > 0) {
+                posy--;
+                if (tabuleiro[posx][posy].passou == 0) tabuleiro[posx][posy].passou = 1;
+                ack = OK_ACK;
+            }
+            else if (pacr->tipo == DIREITA && posx < TAM_TABULEIRO-1) {
+                posx++;
+                if (tabuleiro[posx][posy].passou == 0) tabuleiro[posx][posy].passou = 1;
+                ack = OK_ACK;
+            }
+
+            if (tabuleiro[posx][posy].tem_tesouro && tabuleiro[posx][posy].passou != 2) {
+                tabuleiro[posx][posy].passou = 2;
+                imprime_mapa(tabuleiro, 1, posx, posy);
+
+                uchar nome[64];
+                ack = descobrir_extensao(tabuleiro[posx][posy].tesouro_id, nome);
+                FILE* arq = fopen((char*)nome, "r"); if (!arq) {printf("ERRO AO ABRIR ARQ %s", (char*)nome); exit(1);}
+
+                if (!(pacs = cria_pacote(nome, strlen((char*)nome)+1, pacr->sequencia, ack))) return 0;
+
+                ack = NACK;
+                while (ack == NACK) {
+                    manda_pacote(soq, pacs);
+                           
+                    pacr = recebe_pacote(soq);
+                    if (pacr->checksum == calcula_checksum(pacr)) {
+                        if (pacr->tipo != NACK) ack = pacr->tipo;
+                    }
+                    destroi_pacote(pacr);
+                }
+                destroi_pacote(pacs);
+
+                manda_arquivo(soq, arq);
+                fclose(arq);
+                arq_enviados++;
+                continue;
+            }
+        }
+
+        if (!(pacs = cria_pacote((uchar*)"", 0, pacr->sequencia, ack))) return 0;
+        if (!(manda_pacote(soq, pacs))) return 0;
+
+        destroi_pacote(pacr);
+        destroi_pacote(pacs);
+
+        imprime_mapa(tabuleiro, 1, posx, posy);
+    }
+
+    tabuleiro = libera_tabuleiro(tabuleiro);
     return 0;
 }
