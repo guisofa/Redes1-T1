@@ -59,15 +59,22 @@ pacote* destroi_pacote(pacote* pac);
    o quarto eh o checksum
    o quinto pra frente sao os dados;
    Caso a mensagem tenha menos de TAM_MIN bytes entao bytes nulos
-   serao colocados apos os dados para alcancar o valor minimo  */
+   serao colocados apos os dados para alcancar o valor minimo  
+   Coloca bytes 0xff depois de bytes 0x88 e 0x81
+   A soma de todos os bytes extras e colocada em bytes_adicionados */
 uchar* gera_mensagem(pacote* p, int* bytes_adicionados);
 
 /* Recebe uma string e gera uma struct pacote a partir dela;
    Bytes nulos extras serao ignorados  */
 pacote* gera_pacote(uchar* msg);
 
-int manda_pacote(int soquete, pacote* pac);
-pacote* recebe_pacote(int soquete);
+/* manda um pacote pac pela rede
+   Se estiver em loopback tira as msgs duplicadas */
+int manda_pacote(int soquete, pacote* pac, char eh_loopback);
+
+/* recebe um pacote
+   Se estiver em loopback tira as msgs duplicadas */
+pacote* recebe_pacote(int soquete, char eh_loopback);
 
 /* Recebe um pacote e calcula o checksum em cima dos campos
    tamanho, sequencia, tipo e dados;

@@ -1,14 +1,14 @@
 CFLAGS = -Wall -g
 
-all: server tst
+all: server cliente
 
-tst: tst.o pacote.o jogo.o
-	gcc $(CFLAGS) tst.o pacote.o jogo.o -o tst
+cliente: cliente.o pacote.o jogo.o
+	gcc $(CFLAGS) cliente.o pacote.o jogo.o -o cliente
 server: server.o pacote.o jogo.o
 	gcc $(CFLAGS) server.o pacote.o jogo.o -o server
 
-tst.o : tst.c
-	gcc $(CFLAGS) -c tst.c
+cliente.o : cliente.c
+	gcc $(CFLAGS) -c cliente.c
 server.o: server.c
 	gcc $(CFLAGS) -c server.c
 pacote.o: pacote.c
@@ -22,4 +22,5 @@ purge:
 	rm -f *.o
 	rm -f main
 	rm -f server
-	rm -f tst
+	rm -f cliente
+	rm -f *copia

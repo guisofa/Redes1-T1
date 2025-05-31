@@ -12,6 +12,10 @@
 #include "pacote.h"
 #include "jogo.h"
 
+// se estiver rodando em loopback o programa muda pra 1
+// eh usado para tirar da rede msgs duplicadas
+char eh_loopback = 0;
+
 
 void configurarModoRaw() {
     struct termios ttystate;
@@ -63,6 +67,7 @@ int cria_raw_socket(char* nome_interface_rede) {
     return soquete;
 }
 
+/* Recebe um arquivo e  armazena ele em arq */
 int recebe_arquivo(int soq, FILE* arq) {
     printf("Recebendo arquivo\n");
     pacote *pacr, *pacs; // pacote recieved/sent
@@ -71,47 +76,59 @@ int recebe_arquivo(int soq, FILE* arq) {
     while (1) {
         ack = NACK;
 
-        pacr = recebe_pacote(soq);
-        if (calcula_checksum(pacr) == pacr->checksum) {
+        // pacote com dados recebidos
+        pacr = recebe_pacote(soq, eh_loopback);
+        if (calcula_checksum(pacr) == pacr->checksum) { // se o checksum estiver correto
             ack = ACK;
-            if (pacr->tipo == FIM_ARQ)
+            if (pacr->tipo == FIM_ARQ) // verifica se eh fim de arq
                 break;
+            // se o checksum estiver correto e nao for fim de arq, escreve no arquivo
             fwrite(pacr->dados, 1, pacr->tamanho, arq);
         }
 
         if (!(pacs = cria_pacote((uchar*)"", 0, pacr->sequencia, ack))) return 0;
-        if (!(manda_pacote(soq, pacs))) return 0;
+        if (!(manda_pacote(soq, pacs, eh_loopback))) return 0;
 
-        destroi_pacote(pacr);
-        destroi_pacote(pacs);
+        pacr = destroi_pacote(pacr);
+        pacs = destroi_pacote(pacs);
     }
-    if (!(pacs = cria_pacote((uchar*)"", 0, pacr->sequencia, ACK))) return 0;
-    if (!(manda_pacote(soq, pacs))) return 0;
 
-    destroi_pacote(pacr);
-    destroi_pacote(pacs);
+    // manda o ack do fim de arquivo
+    if (!(pacs = cria_pacote((uchar*)"", 0, pacr->sequencia, ACK))) return 0;
+    if (!(manda_pacote(soq, pacs, eh_loopback))) return 0;
+
+    pacr = destroi_pacote(pacr);
+    pacs = destroi_pacote(pacs);
 
     printf("Arquivo recebido\n");
+
+    // fiz isso para nao encher o buffer com movimentos pq o usuario nao percebeu que achou arquivo
+    printf("APERTE ENTER PARA CONTINUAR\n");
+    char c;
+    do read(STDIN_FILENO, &c, 1); while (c != '\n');
     return 1;
 }
 
-int main() {
+int main(int argc, char** argv){
+    if (argc != 2) {printf("USO: ./%s <interface_de_rede>\n", argv[0]); return 1;}
+    if (!strcmp(argv[1], "lo")) eh_loopback = 1;
     int soq = cria_raw_socket("lo");
 
 
-    int posx = 0, posy = 0;
+    int posx = 0, posy = 0, arq_recebidos = 0;
     tile** tabuleiro = inicica_jogo(0);
-    imprime_mapa(tabuleiro, 0, posx, posy);
+    imprime_mapa(tabuleiro, NULL, 0, posx, posy, arq_recebidos);
 
     configurarModoRaw();
 
     char c;
-    int arq_recebidos = 0;
     pacote *pacr, *pacs;
     int seq = 0;
     int ack;
+    // loop principal para ler movimento e mandar pacote
     while (arq_recebidos < 8) {
         ack = NACK;
+        // le o movimento
         read(STDIN_FILENO, &c, 1);
         if (c == 'w') {
             pacs = cria_pacote((uchar*)"", 0, seq, CIMA);
@@ -127,10 +144,11 @@ int main() {
             continue;
         }
         
+        // manda o pacote e espera ack
         while (ack == NACK) {
-            manda_pacote(soq, pacs);
+            manda_pacote(soq, pacs, eh_loopback);
             
-            pacr = recebe_pacote(soq);
+            pacr = recebe_pacote(soq, eh_loopback);
             if (pacr->checksum == calcula_checksum(pacr)) {
                 if (pacr->tipo != NACK) {
                     ack = pacr->tipo;
@@ -138,18 +156,33 @@ int main() {
                 }
 
             }
-            destroi_pacote(pacr);
+            pacr = destroi_pacote(pacr);
         }
-        destroi_pacote(pacs);
+        pacs = destroi_pacote(pacs);
         seq = (seq + 1) % 32;
 
-        if (ack == ACK) {
-            imprime_mapa(tabuleiro, 0, posx, posy);
-            destroi_pacote(pacr);
+        if (ack == ACK) { // se pacote foi enviado com sucesso, mas movimento invalido
+            imprime_mapa(tabuleiro, NULL, 0, posx, posy, arq_recebidos);
+            pacr = destroi_pacote(pacr);
             continue;
         }
-        else if (ack == OK_ACK) {
-            destroi_pacote(pacr);
+        else if (ack == OK_ACK) { // se movimento foi realizado
+            pacr = destroi_pacote(pacr);
+            if (c == 'w') {
+                posy++; // altera a posicao do player
+                tabuleiro[posx][posy].passou = 1; // muda o parametro passou
+            } else if (c == 'a') {
+                posx--;
+                tabuleiro[posx][posy].passou = 1;
+            } else if (c == 's') {
+                posy--;
+                tabuleiro[posx][posy].passou = 1;
+            } else {
+                posx++;
+                tabuleiro[posx][posy].passou = 1;
+            }
+            imprime_mapa(tabuleiro, NULL, 0, posx, posy, arq_recebidos);
+        } else if (ack == IMAGEM || ack == TEXTO || ack == VIDEO) { // se movimento foi realizado e tinha um tesouro
             if (c == 'w') {
                 posy++;
                 tabuleiro[posx][posy].passou = 1;
@@ -163,36 +196,28 @@ int main() {
                 posx++;
                 tabuleiro[posx][posy].passou = 1;
             }
-            imprime_mapa(tabuleiro, 0, posx, posy);
-        } else if (ack == IMAGEM || ack == TEXTO || ack == VIDEO) {
-            if (c == 'w') {
-                posy++;
-                tabuleiro[posx][posy].passou = 1;
-            } else if (c == 'a') {
-                posx--;
-                tabuleiro[posx][posy].passou = 1;
-            } else if (c == 's') {
-                posy--;
-                tabuleiro[posx][posy].passou = 1;
-            } else {
-                posx++;
-                tabuleiro[posx][posy].passou = 1;
-            }
-            imprime_mapa(tabuleiro, 0, posx, posy);
+            imprime_mapa(tabuleiro, NULL, 0, posx, posy, arq_recebidos);
 
+            // mandando ack para dizer que entendemos que vamos receber um arquivo
             pacs = cria_pacote((uchar*)"", 0, 0, ACK);
-            if (!(manda_pacote(soq, pacs))) return 0;
+            if (!(manda_pacote(soq, pacs, eh_loopback))) return 0;
 
+            // pega nome do arquivo dos dados e abrimos o arquivo
             uchar nome[64]; strcpy((char*)nome, (char*)pacr->dados);
             strcat((char*)nome, "copia");
-            FILE* arq = fopen((char*)nome, "w");
+            FILE* arq = fopen((char*)nome, "wb");
 
-            recebe_arquivo(soq, arq);
-            destroi_pacote(pacr);
-            fclose(arq);
+            recebe_arquivo(soq, arq); 
             arq_recebidos++;
-        } else if (ack == DADOS) exit(1);
+            imprime_mapa(tabuleiro, NULL, 0, posx, posy, arq_recebidos);
+
+            pacs = destroi_pacote(pacs);
+            pacr = destroi_pacote(pacr);
+            fclose(arq);
+
+        } else if (ack == DADOS) exit(1); // usei pra debuggar, deixa ai por enquanto
     }
+    printf("TODOS OS ARQUIVOS RECEBIDOS\n");
 
     restaurarModoTerminal();
 

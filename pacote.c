@@ -15,24 +15,30 @@ pacote* cria_pacote(uchar* msg, int tam, int seq, int tipo) {
 }
 
 pacote* destroi_pacote(pacote* pac) {
+    if (!pac) return NULL;
+
     free(pac->dados);
     free(pac);
 
     return NULL;
 }
 
+// eh um pouco complexo de entender essa daqui entao cuidado
 uchar* gera_mensagem(pacote* p, int* bytes_adicionados) {
-    int bytes_extra = TAM_MIN - (p->tamanho + 4);
+    int bytes_extra = TAM_MIN - (p->tamanho + 4); // bytes nulos extras
     if (bytes_extra < 0) bytes_extra = 0;
 
-    int offset = 0;
+    int offset = 0; // bytes 0xff que tiveram que ser colocados
 
-    uchar* msg = malloc(2 * (p->tamanho + 4 + bytes_extra) * sizeof(uchar));
+    // alocando duas vezes a memoria necessaria caso tenhamos que colocar bytes 0xff em todos os bytes
+    uchar* msg = calloc(2 * (p->tamanho + 4 + bytes_extra), sizeof(uchar));
     if (!msg) return NULL;
 
     msg[0] = MARCADORINI;
+
     // 7 bits de tamanho e o mais significativo de sequencia formam um byte
     msg[1] = ((p->tamanho & 0x7F) << 1) | ((p->sequencia & 0x10) >> 4);
+    // caso seja o byte proibido, entao o proximo tem que ser 0xff e offset eh incrementado
     if (msg[1] == 0x88 || msg[1] == 0x81) {
         msg[2] = 0xff;
         offset++;
@@ -40,7 +46,7 @@ uchar* gera_mensagem(pacote* p, int* bytes_adicionados) {
 
     // 4 bits menos significativos de sequencia e tipo formam outro byte
     msg[2 + offset] = ((p->sequencia & 0x0F) << 4) | (p->tipo & 0x0F);
-    if (msg[2 + offset] == 0x88 || msg[2 + offset] == 0x81) {
+    if (msg[2 + offset] == 0x88 || msg[2 + offset] == 0x81) { // usamos offset para saber quantos bytes 0xff temos que pular
         msg[3 + offset] = 0xff;
         offset++;
     }
@@ -54,17 +60,18 @@ uchar* gera_mensagem(pacote* p, int* bytes_adicionados) {
     for (int i = 0; i < p->tamanho; i++) {
         msg[4 + offset + i] = p->dados[i];
         if (msg[4 + offset + i] == 0x88 || msg[4 + offset + i] == 0x81) {
-            msg[4 + offset + i] = 0xff;
             offset++;
+            msg[4 + offset + i] = 0xff;
         }
     }
-    memset(&msg[4 + p->tamanho + offset], 0, bytes_extra);
 
     *bytes_adicionados = bytes_extra + offset;
 
     return msg;
 }
 
+// usa a mesma logica da funcao anterior, mas ao contrario
+// para ignorar todos os bytes 0xff
 pacote* gera_pacote(uchar* msg) {
     pacote *p = malloc(sizeof(pacote)); if (!p) return NULL;
 
@@ -101,7 +108,7 @@ pacote* gera_pacote(uchar* msg) {
     return p;
 }
 
-int manda_pacote(int soquete, pacote* pac) {
+int manda_pacote(int soquete, pacote* pac, char eh_loopback) {
     int bytes_extras;
     uchar* buffer = gera_mensagem(pac, &bytes_extras);
 
@@ -109,21 +116,24 @@ int manda_pacote(int soquete, pacote* pac) {
     if (send(soquete, buffer, pac->tamanho + 4 + bytes_extras, 0) == -1) return 0;
     free(buffer);
 
-    // recebendo a propria msg enviada quando em lo. tirar essa parte se estiver em cabo
-    buffer = malloc(PACOTE_TAM_MAX * sizeof(uchar));
-    while (1) {
-        int bytes_recebidos = recv(soquete, buffer, PACOTE_TAM_MAX, 0);
-        if (bytes_recebidos < 0) {printf("erro recv\n"); return 0;}
-        if (bytes_recebidos >= 4/*tamanho minimo da msg*/ && buffer[0] == MARCADORINI) {
-            break;
+
+    // recebendo a propria msg enviada quando em lo.
+    if (eh_loopback){
+        buffer = malloc(PACOTE_TAM_MAX * sizeof(uchar));
+        while (1) {
+            int bytes_recebidos = recv(soquete, buffer, PACOTE_TAM_MAX, 0);
+            if (bytes_recebidos < 0) {printf("erro recv\n"); return 0;}
+            if (bytes_recebidos >= 4/*tamanho minimo da msg*/ && buffer[0] == MARCADORINI) {
+                break;
+            }
         }
+        free(buffer);
     }
-    free(buffer);
 
     return 1;
 }
 
-pacote* recebe_pacote(int soquete) {
+pacote* recebe_pacote(int soquete, char eh_loopback) {
     uchar buffer[PACOTE_TAM_MAX];
     pacote* pac = NULL;
 
@@ -136,16 +146,19 @@ pacote* recebe_pacote(int soquete) {
         }
     }
 
-    // parte em loop para tirar duplos quando em lo. tirar essa parte se estiver em cabo
-    free(pac);
-    while (1) {
-        int bytes_recebidos = recv(soquete, buffer, PACOTE_TAM_MAX, 0);
-        if (bytes_recebidos < 0) {printf("erro recv\n"); return NULL;}
-        if (bytes_recebidos >= 4/*tamanho minimo da msg*/ && buffer[0] == MARCADORINI) {
-            pac = gera_pacote(buffer);
-            break;
+    // parte em loop para tirar duplos quando em lo.
+    if (eh_loopback) {
+        destroi_pacote(pac);
+        while (1) {
+            int bytes_recebidos = recv(soquete, buffer, PACOTE_TAM_MAX, 0);
+            if (bytes_recebidos < 0) {printf("erro recv\n"); return NULL;}
+            if (bytes_recebidos >= 4/*tamanho minimo da msg*/ && buffer[0] == MARCADORINI) {
+                pac = gera_pacote(buffer);
+                break;
+            }
         }
     }
+
     return pac;
 }
 
