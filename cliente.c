@@ -198,35 +198,11 @@ int main(int argc, char** argv){
         }
         else if (ack == OK_ACK) { // se movimento foi realizado
             pacr = destroi_pacote(pacr);
-            if (c == 'w') {
-                posy++; // altera a posicao do player
-                tabuleiro[posx][posy].passou = 1; // muda o parametro passou
-            } else if (c == 'a') {
-                posx--;
-                tabuleiro[posx][posy].passou = 1;
-            } else if (c == 's') {
-                posy--;
-                tabuleiro[posx][posy].passou = 1;
-            } else {
-                posx++;
-                tabuleiro[posx][posy].passou = 1;
-            }
+            atualiza_posicao_cliente(tabuleiro, c, &posx, &posy);
             imprime_mapa(tabuleiro, NULL, 0, posx, posy, arq_recebidos);
         } 
         else if (ack == IMAGEM || ack == TEXTO || ack == VIDEO) { // se movimento foi realizado e tinha um tesouro
-            if (c == 'w') {
-                posy++;
-                tabuleiro[posx][posy].passou = 1;
-            } else if (c == 'a') {
-                posx--;
-                tabuleiro[posx][posy].passou = 1;
-            } else if (c == 's') {
-                posy--;
-                tabuleiro[posx][posy].passou = 1;
-            } else {
-                posx++;
-                tabuleiro[posx][posy].passou = 1;
-            }
+            atualiza_posicao_cliente(tabuleiro, c, &posx, &posy);
             imprime_mapa(tabuleiro, NULL, 0, posx, posy, arq_recebidos);
 
             // mandando ack para dizer que entendemos que vamos receber um arquivo

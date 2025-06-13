@@ -106,6 +106,50 @@ movimento* inicia_log() {
     return head;
 }
 
+int atualiza_posicao_server(tile** tabuleiro, movimento** log, int movimento, int* posx, int* posy) {
+    int ack = ACK;
+    if (movimento == CIMA && *posy < TAM_TABULEIRO-1) { // verifica direcao e se movimento possivel
+        (*posy)++; // altera a posicao do player
+        if (tabuleiro[*posx][*posy].passou == 0) tabuleiro[*posx][*posy].passou = 1; // muda o parametro passou caso nao tenha passado
+        *log = adiciona_passo(*log, *posx, *posy); // adiciona o movimento no log
+        ack = OK_ACK;
+    } else if (movimento == ESQUERDA && *posx > 0) {
+        (*posx)--;
+        *log = adiciona_passo(*log, *posx, *posy);
+        if (tabuleiro[*posx][*posy].passou == 0) tabuleiro[*posx][*posy].passou = 1;
+        ack = OK_ACK;
+    } else if (movimento == BAIXO && *posy > 0) {
+        (*posy)--;
+        *log = adiciona_passo(*log, *posx, *posy);
+        if (tabuleiro[*posx][*posy].passou == 0) tabuleiro[*posx][*posy].passou = 1;
+        ack = OK_ACK;
+    }
+    else if (movimento == DIREITA && *posx < TAM_TABULEIRO-1) {
+        (*posx)++;
+        *log = adiciona_passo(*log, *posx, *posy);
+        if (tabuleiro[*posx][*posy].passou == 0) tabuleiro[*posx][*posy].passou = 1;
+        ack = OK_ACK;
+    }
+
+    return ack;
+}
+
+void atualiza_posicao_cliente(tile** tabuleiro, char movimento, int* posx, int* posy) {
+    if (movimento == 'w') {
+        (*posy)++; // altera a posicao do player
+        tabuleiro[*posx][*posy].passou = 1; // muda o parametro passou
+    } else if (movimento == 'a') {
+        (*posx)--;
+        tabuleiro[*posx][*posy].passou = 1;
+    } else if (movimento == 's') {
+        (*posy)--;
+        tabuleiro[*posx][*posy].passou = 1;
+    } else {
+        (*posx)++;
+        tabuleiro[*posx][*posy].passou = 1;
+    }
+}
+
 movimento* adiciona_passo(movimento* head, int x, int y) {
     movimento* new_head = head->ant;
     new_head->x = x;

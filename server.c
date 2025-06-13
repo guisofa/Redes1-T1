@@ -183,28 +183,7 @@ int main(int argc, char** argv){
             }
             ultima_seq = pacr->sequencia;
 
-            if (pacr->tipo == CIMA && posy < TAM_TABULEIRO-1) { // verifica direcao e se movimento possivel
-                posy++; // altera a posicao do player
-                if (tabuleiro[posx][posy].passou == 0) tabuleiro[posx][posy].passou = 1; // muda o parametro passou caso nao tenha passado
-                log = adiciona_passo(log, posx, posy); // adiciona o movimento no log
-                ack = OK_ACK;
-            } else if (pacr->tipo == ESQUERDA && posx > 0) {
-                posx--;
-                log = adiciona_passo(log, posx, posy);
-                if (tabuleiro[posx][posy].passou == 0) tabuleiro[posx][posy].passou = 1;
-                ack = OK_ACK;
-            } else if (pacr->tipo == BAIXO && posy > 0) {
-                posy--;
-                log = adiciona_passo(log, posx, posy);
-                if (tabuleiro[posx][posy].passou == 0) tabuleiro[posx][posy].passou = 1;
-                ack = OK_ACK;
-            }
-            else if (pacr->tipo == DIREITA && posx < TAM_TABULEIRO-1) {
-                posx++;
-                log = adiciona_passo(log, posx, posy);
-                if (tabuleiro[posx][posy].passou == 0) tabuleiro[posx][posy].passou = 1;
-                ack = OK_ACK;
-            }
+            ack = atualiza_posicao_server(tabuleiro, &log, pacr->tipo, &posx, &posy);
 
             // se tiver tesouro na tile que nao tenha sido ja pego
             if (tabuleiro[posx][posy].tem_tesouro && tabuleiro[posx][posy].passou != 2) {
