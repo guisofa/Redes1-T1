@@ -11,9 +11,9 @@ cliente.o : cliente.c
 	gcc $(CFLAGS) -c cliente.c
 server.o: server.c
 	gcc $(CFLAGS) -c server.c
-pacote.o: pacote.c
+pacote.o: pacote.c pacote.h
 	gcc $(CFLAGS) -c pacote.c
-jogo.o : jogo.c
+jogo.o : jogo.c jogo.h
 	gcc $(CFLAGS) -c jogo.c
 
 clean:

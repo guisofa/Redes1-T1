@@ -13,11 +13,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+#include <sys/time.h>
 
 #define MARCADORINI 126 // 01111110
 #define PACOTE_TAM_MAX 131 * 2 // possiveis bytes 0xff extras apos 0x88 e 0x81
 #define DADOS_TAM_MAX 127
 #define TAM_MIN 14 // tamanho minimo da msg a ser enviada por send
+
+#define TIMEOUT_TIME 1000.0 // 1 segundos
 
 #define ACK 0
 #define NACK 1
@@ -74,7 +78,7 @@ int manda_pacote(int soquete, pacote* pac, char eh_loopback);
 
 /* recebe um pacote
    Se estiver em loopback tira as msgs duplicadas */
-pacote* recebe_pacote(int soquete, char eh_loopback);
+pacote* recebe_pacote(int soquete, char eh_loopback, char* timeout);
 
 /* Recebe um pacote e calcula o checksum em cima dos campos
    tamanho, sequencia, tipo e dados;

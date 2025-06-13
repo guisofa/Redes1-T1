@@ -83,51 +83,70 @@ int descobrir_extensao(char* base, uchar* nome) {
     return tipo;
 }
 
-/* manda o arquivo arq. Comeca uma sequencia nova */
-int manda_arquivo(int soq, FILE* arq) {
+/* manda o arquivo arq. */
+int manda_arquivo(int soq, FILE* arq, int* seq, pacote** ultimo) {
     printf("Enviando arquivo\n");
 
     uchar buffer[DADOS_TAM_MAX];
     pacote *pacr, *pacs; // pacote recieved/sent
     int bytes_lidos;
-    int seq = 0;
     char ack;
+    char to = 0;
 
     // enquanto ler algo do arquivo
     while ((bytes_lidos = fread(buffer, 1, DADOS_TAM_MAX, arq)) > 0) {
         ack = NACK;
-
-        // pacote com dados a serem enviados
-        if (!(pacs = cria_pacote(buffer, bytes_lidos, seq, DADOS))) return 0;
         
         // loop para enviar os dados e esperar um ack
         while (ack != ACK) {
+             // pacote com dados a serem enviados
+            if (!(pacs = cria_pacote(buffer, bytes_lidos, *seq, DADOS))) return 0;
+
             if (!manda_pacote(soq, pacs, eh_loopback)) return 0;
 
-            pacr = recebe_pacote(soq, eh_loopback);
+            to = 1;
+            while (to == 1) {pacr = recebe_pacote(soq, eh_loopback, &to);}
 
             // se tiver diferenca no checksum admite que eh um NACK e manda denovo 
-            // (tem que fazer uma logica no cliente para que o cliente veja a sequencia do pacote)
             if (pacr->checksum == calcula_checksum(pacr)) {
+                if (pacr->sequencia == *seq) { // cliente nao recebeu os dados
+                    pacs = destroi_pacote(pacs);
+                    pacr = destroi_pacote(pacr);
+                    continue;
+                }
                 if (pacr->tipo == ACK) ack = ACK;
+                *seq = pacr->sequencia;
             }
+
+            pacs = destroi_pacote(pacs);
             pacr = destroi_pacote(pacr);
         }
-        seq = (seq + 1) % 32;
-        pacs = destroi_pacote(pacs);
     }
 
     // mandando msg de fim de arquivo
-    if (!(pacs = cria_pacote((uchar*)"", 0, seq, FIM_ARQ))) return 0;
-    while (1) {
+    ack = NACK;
+    while (ack != ACK) {
+        pacs = destroi_pacote(pacs);
+        if (!(pacs = cria_pacote((uchar*)"", 0, *seq, FIM_ARQ))) return 0;
+
         if (!manda_pacote(soq, pacs, eh_loopback)) return 0;
-        pacr = recebe_pacote(soq, eh_loopback);
-        if (pacr->tipo == ACK) {
-            pacr = destroi_pacote(pacr);
-            break;
+
+        to = 1;
+        while (to == 1) {pacr = recebe_pacote(soq, eh_loopback, &to);}
+
+        if (pacr->checksum == calcula_checksum(pacr)) {
+            if (pacr->sequencia == *seq) { // cliente nao recebeu os FIM_ARQ
+                pacs = destroi_pacote(pacs);
+                pacr = destroi_pacote(pacr);
+                continue;
+            }
+            if (pacr->tipo == ACK) ack = ACK;
+            *seq = pacr->sequencia;
         }
+        pacr = destroi_pacote(pacr);
     }
-    pacs = destroi_pacote(pacs);
+    *ultimo = destroi_pacote(*ultimo);
+    *ultimo = pacs;
 
     printf("Terminou de enviar\n");
     return 1;
@@ -145,14 +164,24 @@ int main(int argc, char** argv){
     movimento* log = inicia_log();
     imprime_mapa(tabuleiro, log, 1, posx, posy, arq_enviados);
 
-    pacote *pacr, *pacs; // pacote recieved/sent
-    int ack;
+    pacote *pacr = NULL, *pacs = NULL; // pacote recieved/sent
+    pacote *ultimo = NULL;
+    int ack; int ultima_seq = 100;
+    char to = 0; // flag de timeout
     while (arq_enviados < 8) {
         ack = NACK;
 
-        pacr = recebe_pacote(soq, eh_loopback); // pacote falando o movimento
+        // recebe pacote falando o movimento
+        to = 1;
+        while (to == 1) pacr = recebe_pacote(soq, eh_loopback, &to);
         if (calcula_checksum(pacr) == pacr->checksum) {
             ack = ACK;
+            if (pacr->sequencia == ultima_seq) {
+                manda_pacote(soq, ultimo, eh_loopback);
+                pacr = destroi_pacote(pacr);
+                continue;
+            }
+            ultima_seq = pacr->sequencia;
 
             if (pacr->tipo == CIMA && posy < TAM_TABULEIRO-1) { // verifica direcao e se movimento possivel
                 posy++; // altera a posicao do player
@@ -191,42 +220,45 @@ int main(int argc, char** argv){
                 // pacote com tipo do tesouro que sera enviado ao cliente
                 if (!(pacs = cria_pacote(nome, strlen((char*)nome)+1, pacr->sequencia, ack))) return 0;
 
-                // ta cheio de destroi pacote por ai pra garantir que nao haja vazamento de memoria
-                // talvez alguns sejam redundantes, mas nao vai ter problema desde que sejam usados assim
-                pacr = destroi_pacote(pacr);
 
                 // loop para avisar o cliente que achou um tesouro e esperar ack
                 ack = NACK;
-                while (ack == NACK) {
+                while (ack != ACK) {
+                    pacr = destroi_pacote(pacr);                    
                     manda_pacote(soq, pacs, eh_loopback);
                            
-                    pacr = recebe_pacote(soq, eh_loopback);
+                    to = 1;
+                    while (to == 1) pacr = recebe_pacote(soq, eh_loopback, &to);
                     if (pacr->checksum == calcula_checksum(pacr)) {
-                        if (pacr->tipo != NACK) ack = pacr->tipo;
+                        if (pacr->sequencia != ultima_seq) {
+                            ack = ACK;
+                            ultima_seq = pacr->sequencia;
+                        }
                     }
-                    pacr = destroi_pacote(pacr);
                 }
-                pacs = destroi_pacote(pacs);
+                ultimo = destroi_pacote(ultimo);
+                ultimo = pacs;
 
-                manda_arquivo(soq, arq);
+                manda_arquivo(soq, arq, &ultima_seq, &ultimo);
                 arq_enviados++;
                 imprime_mapa(tabuleiro, log, 1, posx, posy, arq_enviados);
 
                 fclose(arq);
-                continue; // da continue pra nao deixar que ele manda o ack ali embaixo. Ta na vez do cliente mandar pacote com movimento
             }
         }
 
-        if (!(pacs = cria_pacote((uchar*)"", 0, pacr->sequencia, ack))) return 0;
+        if (!(pacs = cria_pacote((uchar*)"", 0, ultima_seq, ack))) return 0;
         if (!(manda_pacote(soq, pacs, eh_loopback))) return 0;
 
         pacr = destroi_pacote(pacr);
-        pacs = destroi_pacote(pacs);
+        ultimo = destroi_pacote(ultimo);
+        ultimo = pacs;
 
         imprime_mapa(tabuleiro, log, 1, posx, posy, arq_enviados);
     }
     printf("TODOS OS ARQUIVOS ENVIADOS\n");
 
+    ultimo = destroi_pacote(ultimo);
     log = libera_log(log);
     tabuleiro = libera_tabuleiro(tabuleiro);
     return 0;

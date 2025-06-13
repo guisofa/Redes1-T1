@@ -1,5 +1,12 @@
 #include "pacote.h"
 
+double timestamp (void) {
+  struct timespec tp;
+  clock_gettime(CLOCK_MONOTONIC_RAW, &tp);
+  return ( (double) tp.tv_sec*1.0e3 + (double) tp.tv_nsec*1.0e-6 );
+}
+
+
 pacote* cria_pacote(uchar* msg, int tam, int seq, int tipo) {
     pacote* pac = malloc(sizeof(pacote)); if (!pac) return NULL;
     pac->tamanho = tam;
@@ -133,25 +140,30 @@ int manda_pacote(int soquete, pacote* pac, char eh_loopback) {
     return 1;
 }
 
-pacote* recebe_pacote(int soquete, char eh_loopback) {
+pacote* recebe_pacote(int soquete, char eh_loopback, char* timeout) {
     uchar buffer[PACOTE_TAM_MAX];
     pacote* pac = NULL;
 
+    struct timeval sock_timeout;
+    sock_timeout.tv_sec = TIMEOUT_TIME/1000;
+    sock_timeout.tv_usec = ((int)TIMEOUT_TIME%1000) * 1000;
+    setsockopt(soquete, SOL_SOCKET, SO_RCVTIMEO, (char*) &sock_timeout, sizeof(sock_timeout));
+
+    double tempo = timestamp();
     while (1) {
         int bytes_recebidos = recv(soquete, buffer, PACOTE_TAM_MAX, 0);
-        if (bytes_recebidos < 0) {printf("erro recv\n"); return NULL;}
         if (bytes_recebidos >= 4/*tamanho minimo da msg*/ && buffer[0] == MARCADORINI) {
             pac = gera_pacote(buffer);
             break;
         }
+        if (timestamp() - tempo > TIMEOUT_TIME) {*timeout = 1; printf("timeout\n"); return NULL;}
     }
 
     // parte em loop para tirar duplos quando em lo.
     if (eh_loopback) {
-        destroi_pacote(pac);
+        pac = destroi_pacote(pac);
         while (1) {
             int bytes_recebidos = recv(soquete, buffer, PACOTE_TAM_MAX, 0);
-            if (bytes_recebidos < 0) {printf("erro recv\n"); return NULL;}
             if (bytes_recebidos >= 4/*tamanho minimo da msg*/ && buffer[0] == MARCADORINI) {
                 pac = gera_pacote(buffer);
                 break;
@@ -159,6 +171,7 @@ pacote* recebe_pacote(int soquete, char eh_loopback) {
         }
     }
 
+    *timeout = 0;
     return pac;
 }
 
