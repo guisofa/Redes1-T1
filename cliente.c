@@ -142,7 +142,7 @@ int recebe_arquivo(int soq, FILE* arq, int *seq, pacote* ultimo) {
 int main(int argc, char** argv){
     if (argc != 2) {printf("USO: ./%s <interface_de_rede>\n", argv[0]); return 1;}
     if (!strcmp(argv[1], "lo")) eh_loopback = 1;
-    int soq = cria_raw_socket("lo");
+    int soq = cria_raw_socket(argv[1]);
 
 
     int posx = 0, posy = 0, arq_recebidos = 0;
