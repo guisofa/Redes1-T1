@@ -227,13 +227,15 @@ int main(int argc, char** argv){
             //o sleep é nescessario para terminar de fechar o arquivo direito
             sleep(1);
             uchar comando[256];
-            snprintf((char*)comando, sizeof(comando), "mpv --pause %s", nome);
 
-            if(ack == IMAGEM || ack == VIDEO){
+            if (ack == TEXTO) {
+                snprintf((char*)comando, sizeof(comando), "less %s", nome);
                 system((char*)comando);
             }
-
-
+            else {
+                snprintf((char*)comando, sizeof(comando), "mpv --pause %s", nome);
+                system((char*)comando);
+            }
         } else if (ack == DADOS) exit(1); // usei pra debuggar, deixa ai por enquanto
     }
     printf("TODOS OS ARQUIVOS RECEBIDOS\n");
