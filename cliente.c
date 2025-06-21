@@ -218,10 +218,21 @@ int main(int argc, char** argv){
             seq = (seq + 1) % 32;
             arq_recebidos++;
             imprime_mapa(tabuleiro, NULL, 0, posx, posy, arq_recebidos);
-
+            
             pacs = NULL; // depois de recebe_arquivo pacs esta apontando para bloco liberado
             pacr = destroi_pacote(pacr);
             fclose(arq);
+            
+            //comando para executar o mpv no momento em que receber o arquivo
+            //o sleep é nescessario para terminar de fechar o arquivo direito
+            sleep(1);
+            uchar comando[256];
+            snprintf((char*)comando, sizeof(comando), "mpv --pause %s", nome);
+
+            if(ack == IMAGEM || ack == VIDEO){
+                system((char*)comando);
+            }
+
 
         } else if (ack == DADOS) exit(1); // usei pra debuggar, deixa ai por enquanto
     }

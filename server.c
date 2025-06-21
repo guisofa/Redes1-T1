@@ -58,7 +58,7 @@ int descobrir_extensao(char* base, uchar* nome) {
     int tipo = 0;
     DIR *d;
     struct dirent *dir;
-    d = opendir(".");
+    d = opendir("./objetos");
 
     if (d) {
         while ((dir = readdir(d)) != NULL) {
@@ -191,10 +191,13 @@ int main(int argc, char** argv){
                 imprime_mapa(tabuleiro, log, 1, posx, posy, arq_enviados);
 
                 uchar nome[64];
+                uchar caminho[256];
                 // descobre o nome completo e tipo do arquivo
                 ack = descobrir_extensao(tabuleiro[posx][posy].tesouro_id, nome);
+                
                 // abre como binario por padrao
-                FILE* arq = fopen((char*)nome, "rb"); if (!arq) {printf("ERRO AO ABRIR ARQ %s", (char*)nome); exit(1);}
+                snprintf((char*)caminho, 256, "./objetos/%s", nome);
+                FILE* arq = fopen((char*)caminho, "rb"); if (!arq) {printf("ERRO AO ABRIR ARQ %s", (char*)nome); exit(1);}
 
                 // pacote com tipo do tesouro que sera enviado ao cliente
                 if (!(pacs = cria_pacote(nome, strlen((char*)nome)+1, pacr->sequencia, ack))) return 0;
