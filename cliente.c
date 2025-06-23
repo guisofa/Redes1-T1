@@ -9,8 +9,12 @@
 #include <unistd.h>
 #include <time.h>
 #include <termios.h>
+#include <sys/statvfs.h>
 #include "pacote.h"
 #include "jogo.h"
+
+// tolerancia ao verificar espaco em disco
+#define DISK_SIZE_TOLERANCE 2
 
 // se estiver rodando em loopback o programa muda pra 1
 // eh usado para tirar da rede msgs duplicadas
@@ -65,6 +69,16 @@ int cria_raw_socket(char* nome_interface_rede) {
     }
  
     return soquete;
+}
+
+int tam_suficiente(long tamanho) {
+    struct statvfs st;
+    if (statvfs(".", &st) != 0) {
+        printf("ERRO AO VERIFICAR ESPACO EM DISCO");
+        exit(1);
+    }
+    if (tamanho * DISK_SIZE_TOLERANCE < st.f_bavail * st.f_bsize) return 1;
+    return 0;
 }
 
 /* Recebe um arquivo e armazena ele em arq */
@@ -133,7 +147,7 @@ int recebe_arquivo(int soq, FILE* arq, int *seq, pacote* ultimo) {
     printf("Arquivo recebido\n");
 
     // fiz isso para nao encher o buffer com movimentos pq o usuario nao percebeu que achou arquivo
-    printf("APERTE ENTER PARA CONTINUAR\n");
+    printf("APERTE ENTER PARA VER O ARQUIVO\n");
     char c;
     do read(STDIN_FILENO, &c, 1); while (c != '\n');
     return 1;
@@ -205,12 +219,42 @@ int main(int argc, char** argv){
             atualiza_posicao_cliente(tabuleiro, c, &posx, &posy);
             imprime_mapa(tabuleiro, NULL, 0, posx, posy, arq_recebidos);
 
+            // verificacao de permissao
+            if (access(".", W_OK) != 0) {
+                printf("SEM PERMISSAO DE ESCRITA\n");
+                pacs = cria_pacote((uchar*)"0", 1, seq, ERRO);
+                ack = NACK;
+                while (ack == NACK) {
+                    if (!(manda_pacote(soq, pacs, eh_loopback))) return 1;
+                    pacr = destroi_pacote(pacr);
+                    pacr = recebe_pacote(soq, eh_loopback, &to); if (to) {to = 0; continue;}
+                    if (pacr->checksum != calcula_checksum(pacr)) continue;
+                    ack = pacr->tipo;
+                }
+                return 1;
+            }
+            // verificacao de espaco em disco
+            long tamanho; memcpy(&tamanho, pacr->dados, 8);
+            if (!tam_suficiente(tamanho)) {
+                printf("SEM ESPACO EM DISCO\n");
+                pacs = cria_pacote((uchar*)"1", 1, seq, ERRO);
+                ack = NACK;
+                while (ack == NACK) {
+                    if (!(manda_pacote(soq, pacs, eh_loopback))) return 1;
+                    pacr = destroi_pacote(pacr);
+                    pacr = recebe_pacote(soq, eh_loopback, &to); if (to) {to = 0; continue;}
+                    if (pacr->checksum != calcula_checksum(pacr)) continue;
+                    ack = pacr->tipo;
+                }
+                return 1;
+            }
+
             // mandando ack para dizer que entendemos que vamos receber um arquivo
             pacs = cria_pacote((uchar*)"", 0, seq, ACK);
-            if (!(manda_pacote(soq, pacs, eh_loopback))) return 0;
+            if (!(manda_pacote(soq, pacs, eh_loopback))) return 1;
 
             // pega nome do arquivo dos dados e abrimos o arquivo
-            uchar nome[64]; strcpy((char*)nome, (char*)pacr->dados);
+            uchar nome[64]; strcpy((char*)nome, (char*)(pacr->dados+8));
             strcat((char*)nome, "copia");
             FILE* arq = fopen((char*)nome, "wb");
 

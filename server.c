@@ -83,6 +83,16 @@ int descobrir_extensao(char* base, uchar* nome) {
     return tipo;
 }
 
+/* recebe o caminho de um arquivo e retrona o tamanho em bytes dele */
+long tam_arquivo(char* caminho) {
+    struct stat st;
+    if (stat(caminho, &st) != 0) {
+        printf("ERRO AO VERIFICAR STAT DE ARQUIVO\n");
+        exit(1);
+    }
+    return st.st_size;
+}
+
 /* manda o arquivo arq. */
 int manda_arquivo(int soq, FILE* arq, int* seq, pacote** ultimo) {
     printf("Enviando arquivo\n");
@@ -191,16 +201,23 @@ int main(int argc, char** argv){
                 imprime_mapa(tabuleiro, log, 1, posx, posy, arq_enviados);
 
                 uchar nome[64];
-                uchar caminho[256];
+                uchar caminho[74];
+                uchar campo_dados[127]; // 8 bytes de tamanho do arquivo + nome do arquivo
+                long tamanho;
                 // descobre o nome completo e tipo do arquivo
                 ack = descobrir_extensao(tabuleiro[posx][posy].tesouro_id, nome);
                 
+                
+                snprintf((char*)caminho, 74, "./objetos/%s", nome);
                 // abre como binario por padrao
-                snprintf((char*)caminho, 256, "./objetos/%s", nome);
                 FILE* arq = fopen((char*)caminho, "rb"); if (!arq) {printf("ERRO AO ABRIR ARQ %s", (char*)nome); exit(1);}
+                
+                tamanho = tam_arquivo((char*)caminho);
+                memcpy(campo_dados, &tamanho, 8);
+                memcpy(campo_dados+8, nome, strlen((char*)nome)+1);             
 
                 // pacote com tipo do tesouro que sera enviado ao cliente
-                if (!(pacs = cria_pacote(nome, strlen((char*)nome)+1, pacr->sequencia, ack))) return 0;
+                if (!(pacs = cria_pacote(campo_dados, strlen((char*)nome)+8+1, pacr->sequencia, ack))) return 0;
 
 
                 // loop para avisar o cliente que achou um tesouro e esperar ack
@@ -211,11 +228,19 @@ int main(int argc, char** argv){
                            
                     to = 1;
                     while (to == 1) pacr = recebe_pacote(soq, eh_loopback, &to);
-                    if (pacr->checksum == calcula_checksum(pacr)) {
-                        if (pacr->sequencia != ultima_seq) {
-                            ack = ACK;
-                            ultima_seq = pacr->sequencia;
+                    if (pacr->checksum == calcula_checksum(pacr) && pacr->sequencia != ultima_seq) {
+                        if (pacr->tipo == ERRO) {
+                            if (pacr->dados[0] == '0')
+                                printf("CLIENTE SEM PERMISSAO DE ESCRITA\n");
+                            else if (pacr->dados[0] == '1')
+                                printf("CLIENTE SEM ESPACO DISPONIVEL\n");
+                            pacs = destroi_pacote(pacs);
+                            pacs = cria_pacote((uchar*)"", 0, pacr->sequencia, ACK);
+                            manda_pacote(soq, pacs, eh_loopback);
+                            return 1;
                         }
+                        ack = ACK;
+                        ultima_seq = pacr->sequencia;
                     }
                 }
                 ultimo = destroi_pacote(ultimo);
