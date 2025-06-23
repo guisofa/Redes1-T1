@@ -50,6 +50,32 @@ int cria_raw_socket(char* nome_interface_rede) {
     return soquete;
 }
 
+/* garante que a ultima mensagem chegou ao cliente 
+   para isso tenta receber uma msg duas vezes
+   se nao vier significa que nao deu to no cliente
+   se receber entao o cliente nao recebeu a msg e 
+   reenviamos ela aqui dentro                       */
+void verifica_ultima_msg(int soq, pacote* ultimo) {
+    char to;
+    pacote* pacr;
+    while (1){
+        pacr = recebe_pacote(soq, eh_loopback, &to);
+        if (to != 1) {
+            pacr = destroi_pacote(pacr);
+            manda_pacote(soq, ultimo, eh_loopback);
+            continue;
+        }
+        pacr = destroi_pacote(pacr);
+        pacr = recebe_pacote(soq, eh_loopback, &to);
+        if (to != 1) {
+            pacr = destroi_pacote(pacr);
+            manda_pacote(soq, ultimo, eh_loopback);
+            continue;
+        }
+        break;
+    }
+}
+
 /* recebe um nome de arquivo sem extensao e encontra um 
    arquivo no dir atual com essa extensao. Coloca o nome
    de arquivo completo, com extensao, no parametro nome e 
@@ -237,6 +263,7 @@ int main(int argc, char** argv){
                             pacs = destroi_pacote(pacs);
                             pacs = cria_pacote((uchar*)"", 0, pacr->sequencia, ACK);
                             manda_pacote(soq, pacs, eh_loopback);
+                            verifica_ultima_msg(soq, pacs);
                             return 1;
                         }
                         ack = ACK;
@@ -264,6 +291,8 @@ int main(int argc, char** argv){
         imprime_mapa(tabuleiro, log, 1, posx, posy, arq_enviados);
     }
     printf("TODOS OS ARQUIVOS ENVIADOS\n");
+
+    verifica_ultima_msg(soq, ultimo);
 
     ultimo = destroi_pacote(ultimo);
     log = libera_log(log);
