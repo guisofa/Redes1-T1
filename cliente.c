@@ -255,7 +255,7 @@ int main(int argc, char** argv){
 
             // pega nome do arquivo dos dados e abrimos o arquivo
             uchar nome[64]; strcpy((char*)nome, (char*)(pacr->dados+8));
-            strcat((char*)nome, "copia");
+            //strcat((char*)nome, "copia");
             FILE* arq = fopen((char*)nome, "wb");
 
             recebe_arquivo(soq, arq, &seq, pacs);
