@@ -156,7 +156,7 @@ pacote* recebe_pacote(int soquete, char eh_loopback, char* timeout) {
             pac = gera_pacote(buffer);
             break;
         }
-        if (timestamp() - tempo > TIMEOUT_TIME) {*timeout = 1; printf("timeout\n"); return NULL;}
+        if (timestamp() - tempo > TIMEOUT_TIME) {*timeout = 1; /*printf("timeout\n");*/ return NULL;}
     }
 
     // parte em loop para tirar duplos quando em lo.
